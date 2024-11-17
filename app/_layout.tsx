@@ -1,6 +1,12 @@
-import { Slot, useRouter, useSegments } from "expo-router";
+import {
+  Slot,
+  useNavigationContainerRef,
+  useRouter,
+  useSegments,
+} from "expo-router";
 import { ClerkLoaded, ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import * as SplashScreen from "expo-splash-screen";
+import * as Sentry from "@sentry/react-native";
 import { LogBox } from "react-native";
 import { useEffect } from "react";
 import {
@@ -27,6 +33,28 @@ if (!clerkPublishableKey) {
 }
 
 LogBox.ignoreLogs(["Clerk: Clerk has been loaded with development keys"]);
+
+// Construct a new instrumentation instance. This is needed to communicate between the integration and React
+const routingInstrumentation = Sentry.reactNavigationIntegration();
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  attachScreenshot: true,
+  debug: false,
+  tracesSampleRate: 1.0,
+  _experiments: {
+    profilesSampleRate: 1.0,
+    replaysSessionSampleRate: 1.0,
+    replaysOnErrorSampleRate: 1.0,
+  },
+  integrations: [
+    Sentry.reactNativeTracingIntegration({
+      routingInstrumentation,
+      enableNativeFramesTracking: true,
+    }),
+    Sentry.mobileReplayIntegration(),
+  ],
+});
 
 // Prevent auto hide splash screen
 SplashScreen.preventAutoHideAsync();
@@ -62,7 +90,13 @@ const InitialLayout = () => {
   return <Slot />;
 };
 
-export default function RootLayout() {
+const RootLayout = () => {
+  const ref = useNavigationContainerRef();
+
+  useEffect(() => {
+    routingInstrumentation.registerNavigationContainer(ref);
+  }, [ref]);
+
   return (
     <ClerkProvider
       publishableKey={clerkPublishableKey!}
@@ -75,4 +109,6 @@ export default function RootLayout() {
       </ClerkLoaded>
     </ClerkProvider>
   );
-}
+};
+
+export default Sentry.wrap(RootLayout);
